@@ -6,4 +6,4 @@ An [obsolete](https://wiki.postgresql.org/wiki/What's_new_in_PostgreSQL_9.5#INSE
 
 ## Requirements
 
-* Go 1.5+
+* Go 1.2+
