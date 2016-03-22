@@ -14,17 +14,24 @@ var (
 )
 
 func init() {
-	var err error
-
-	host := flag.String("host", "localhost", "database host")
-	port := flag.Int("port", 5432, "database port")
-	user := flag.String("username", "postgres", "database username")
-	pw := flag.String("password", "", "database password")
-	dbname := flag.String("dbname", "upsert_test", "database name (warning: any existing database with this name will be dropped before the test)")
+	var (
+		err    error
+		host   *string = flag.String("host", "localhost", "database host")
+		user           = flag.String("user", "postgres", "database user")
+		pw             = flag.String("pw", "", "database password")
+		dbname         = flag.String("db", "upsert_test", "db name")
+		port   *int    = flag.Int("port", 5432, "database port")
+	)
 	flag.Parse()
 
-	opts := fmt.Sprintf(
-		"host='%s' port='%d' user='%s' password='%s' sslmode=disable dbname='%s'",
+	opts := fmt.Sprintf(`
+		host='%s' 
+		port='%d' 
+		user='%s' 
+		password='%s' 
+		sslmode=disable 
+		dbname='%s'
+	`,
 		*host, *port, *user, *pw, *dbname,
 	)
 
