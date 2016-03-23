@@ -3,8 +3,10 @@ package upsert_test
 import (
 	"flag"
 	"fmt"
+	"log"
 	"testing"
 
+	"github.com/brnstz/upsert"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -30,10 +32,29 @@ func init() {
 		user='%s' 
 		password='%s' 
 		sslmode=disable 
-		dbname='%s'
 	`,
-		*host, *port, *user, *pw, *dbname,
+		*host, *port, *user, *pw,
 	)
+
+	db, err = sqlx.Connect("postgres", opts)
+	if err != nil {
+		panic(err)
+	}
+
+	// try to drop db, ignore any errors (probably didn't exist)
+	_, err = db.Exec(fmt.Sprintf(`DROP DATABASE "%s"`, *dbname))
+	if err != nil {
+		log.Println("couldn't drop database", err)
+	}
+
+	// Create the database
+	_, err = db.Exec(fmt.Sprintf(`CREATE DATABASE "%s"`, *dbname))
+	if err != nil {
+		panic(err)
+	}
+
+	// Append new db name to opts
+	opts += fmt.Sprintf(`dbname='%s'`, *dbname)
 
 	db, err = sqlx.Connect("postgres", opts)
 	if err != nil {
@@ -41,15 +62,72 @@ func init() {
 	}
 }
 
-func TestUpsert(t *testing.T) {
-	var count int
+type Person struct {
+	Name string
+	Age  int
+	Id   int `upsert:"key,omit"`
+}
 
-	err := sqlx.Get(db, &count, "SELECT COUNT(*) FROM hello")
+func (p *Person) Table() string {
+	return "person"
+}
+
+func NewPerson(name string, age int) (p *Person, err error) {
+	p = &Person{
+		Name: name,
+		Age:  age,
+	}
+
+	return
+}
+
+func GetPersonById(db sqlx.Ext, id int) (p *Person, err error) {
+	p = &Person{}
+
+	err = sqlx.Get(db, p, `SELECT * FROM person WHERE id = $1`, id)
+
+	return
+}
+
+func TestUpsert(t *testing.T) {
+	var err error
+
+	_, err = db.Exec(`
+		CREATE TABLE person (
+			id BIGSERIAL PRIMARY KEY,
+			name TEXT,
+			age INT
+		)
+	`)
+
+	p1, err := NewPerson("Brian Seitz", 36)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if count != 1 {
-		t.Fatalf("expected 1 but got %d", count)
+	_, err = upsert.Upsert(db, p1)
+	if err != nil {
+		t.Fatal(err)
 	}
+
+	p2, err := GetPersonById(db, p1.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p2.Age = 37
+	_, err = upsert.Upsert(db, p2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p3, err := GetPersonById(db, p1.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if p3.Age != 37 {
+		t.Fatalf("expected age 37 but got %d", p3.Age)
+	}
+
 }

@@ -5,4 +5,7 @@ go:
     - 1.4
     - 1.5
 
-script: go build .
+services:
+    - postgresql
+
+script: go test -v .
