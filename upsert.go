@@ -25,8 +25,9 @@ type Upserter interface {
 
 // updateColumns returns the fields that are read from the struct and set
 // on upserting in the db. Typically this should include everything except the
-// primary key id and any composite (array, nested struct) types. Tag
-// a field with `upsert:"omit"`
+// key fields and any composite (array, nested struct) types or any
+// field that doesn't map directly into a db column. Tag a field with
+// `upsert:"omit"` to explicitly exclude from this list.
 func updateColumns(u Upserter) (columns []string) {
 	ut := reflect.TypeOf(u)
 
