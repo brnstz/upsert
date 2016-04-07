@@ -15,12 +15,63 @@ var (
 	ErrNoIDReturned = errors.New("no id returned")
 )
 
-// Upserter is a interface specific to sqlx and PostgreSQL that can save
-// a single row of data via Upsert(), Update() or Insert(). It doesn't try to
-// know anything about relationships between tables.
+// Upserter is an interface specific to sqlx and PostgreSQL that can save a
+// single row of data via Upsert(), Update() or Insert(). It doesn't try to
+// know anything about relationships between tables. The behavior of Upserter
+// depends on three struct tags.
+//
+// """
+//  * db: As with sqlx, this tag is the database column name for the field.
+//     If db is not defined, the default is the lowercase value of the field
+//     name.
+//
+//  * upsert: This may either be "key" or "omit". If it's "key", the
+//     field/column is part of the where clause when attempting to update
+//     an existing column. If it's "omit", the field is ignored completely.
+//     By default, the field is considered a non-key value that should be
+//     updated/set in the db.
+//
+//  * upsert_value: This is the placeholder for the value of the field for
+//     use by sqlx.NamedExec(). By default, this is :column_name and typically
+//     doesn't need to be changed. However, if the field needs to be
+//     transformed by an SQL function before storing in the database,
+//     this tag can be set. For example, if you had "lat" and "lon" columns,
+//     you wouldn't want to store them in the db. Instead you'd want a
+//     "location" column tagged with `upsert_value:"ll_to_earth(:lat, :lon)`
+//
+// """
 type Upserter interface {
 	// Table returns table name we should save to
 	Table() string
+}
+
+type columnSpec struct {
+	name  string
+	value string
+}
+
+func newColumnSpec(fieldName string, tag reflect.StructTag) columnSpec {
+	cs := columnSpec{}
+
+	// The name of the column is either the value of the "db" struct tag
+	// or a lowercase version of the field name.
+	dbTag := tag.Get("db")
+	if len(dbTag) > 0 {
+		cs.name = dbTag
+	} else {
+		cs.name = strings.ToLower(fieldName)
+	}
+
+	// The value placeholder of the column is typically just ":column_name"
+	// but can be overriden with upsert_value.
+	val := tag.Get("upsert_value")
+	if len(val) > 0 {
+		cs.value = val
+	} else {
+		cs.value = ":" + cs.name
+	}
+
+	return cs
 }
 
 // updateColumns returns the fields that are read from the struct and set
@@ -28,7 +79,7 @@ type Upserter interface {
 // key fields and any composite (array, nested struct) types or any
 // field that doesn't map directly into a db column. Tag a field with
 // `upsert:"omit"` to explicitly exclude from this list.
-func updateColumns(u Upserter) (columns []string) {
+func updateColumns(u Upserter) (columns []columnSpec) {
 	ut := reflect.TypeOf(u)
 
 	if ut.Kind() == reflect.Ptr {
@@ -45,22 +96,11 @@ func updateColumns(u Upserter) (columns []string) {
 
 		// Include any column that isn't tagged with upsert:omit
 		if !strings.Contains(tag.Get("upsert"), "omit") {
-			columns = append(columns, dbTagOrLower(field.Name, tag))
+			columns = append(columns, newColumnSpec(field.Name, tag))
 		}
 	}
 
 	return
-}
-
-// dbTagOrLower returns either the value of the "db" struct tag for this field
-// or, if that does not exist, it returns a lowercase version of the field name.
-func dbTagOrLower(name string, tag reflect.StructTag) string {
-	dbTag := tag.Get("db")
-	if len(dbTag) > 0 {
-		return dbTag
-	} else {
-		return strings.ToLower(name)
-	}
 }
 
 // uniqueKeyColumns returns the fields of the struct that together are
@@ -68,7 +108,7 @@ func dbTagOrLower(name string, tag reflect.StructTag) string {
 // foreign key plus an internal value. This is used in where clause
 // when trying to find existing rows. Tag a field with `"upsert:"key"`
 // to include in the unique key.
-func uniqueKeyColumns(u Upserter) (columns []string) {
+func uniqueKeyColumns(u Upserter) (columns []columnSpec) {
 	ut := reflect.TypeOf(u)
 
 	if ut.Kind() == reflect.Ptr {
@@ -86,7 +126,7 @@ func uniqueKeyColumns(u Upserter) (columns []string) {
 		// if possible options were substrings of one another. For a
 		// better implementation, look at src/encoding/json/tags.go
 		if strings.Contains(tag.Get("upsert"), "key") {
-			columns = append(columns, dbTagOrLower(field.Name, tag))
+			columns = append(columns, newColumnSpec(field.Name, tag))
 		}
 	}
 
@@ -103,7 +143,7 @@ func set(u Upserter) string {
 
 	b.WriteString("SET ")
 	for i := 0; i < n; i++ {
-		fmt.Fprintf(&b, `"%s" = :%s`, cols[i], cols[i])
+		fmt.Fprintf(&b, `"%s" = %s`, cols[i].name, cols[i].value)
 
 		// If we are not at the last value, add a comma
 		if i < n-1 {
@@ -124,7 +164,7 @@ func values(u Upserter) string {
 
 	b.WriteRune('(')
 	for i := 0; i < n; i++ {
-		fmt.Fprintf(&b, `"%s"`, cols[i])
+		fmt.Fprintf(&b, `"%s"`, cols[i].name)
 
 		// If we are not at the last value, add a comma
 		if i < n-1 {
@@ -135,7 +175,7 @@ func values(u Upserter) string {
 
 	b.WriteString("VALUES (")
 	for i := 0; i < n; i++ {
-		fmt.Fprintf(&b, `:%s`, cols[i])
+		fmt.Fprintf(&b, `%s`, cols[i].value)
 
 		// If we are not at the last value, add a comma
 		if i < n-1 {
@@ -161,7 +201,7 @@ func where(u Upserter) string {
 		// something like (x = y OR (x is null and y is null))
 		// rather than "IS NOT DISTINCT FROM" which doesn't use indexes
 		// it seems
-		fmt.Fprintf(&b, `%s = :%s`, keycols[i], keycols[i])
+		fmt.Fprintf(&b, `%s = %s`, keycols[i].name, keycols[i].value)
 
 		if i < n-1 {
 			fmt.Fprint(&b, " AND ")
@@ -186,18 +226,10 @@ func insertSQL(u Upserter) string {
 }
 
 func Update(ext sqlx.Ext, u Upserter) (err error) {
-	/*
-		t1 := time.Now()
-		defer func() {
-			t2 := time.Now()
-			log.Printf("update of %v took %v with err %v\n", u, t2.Sub(t1), err)
-		}()
-	*/
-
 	// Try to update an existing row
 	rows, err := sqlx.NamedQuery(ext, updateSQL(u), u)
 	if err != nil {
-		log.Println(err)
+		log.Println(updateSQL(u), err)
 		return
 	}
 	defer rows.Close()
@@ -220,14 +252,6 @@ func Update(ext sqlx.Ext, u Upserter) (err error) {
 // that implements the Upserter() interface. We attempt to insert it
 // and set its primary key id value.
 func Insert(ext sqlx.Ext, u Upserter) (err error) {
-	/*
-		t1 := time.Now()
-		defer func() {
-			t2 := time.Now()
-			log.Printf("insert of %v took %v\n", u, t2.Sub(t1))
-		}()
-	*/
-
 	// Try to insert a row
 	rows, err := sqlx.NamedQuery(ext, insertSQL(u), u)
 	if err != nil {
