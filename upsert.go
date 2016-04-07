@@ -20,7 +20,6 @@ var (
 // know anything about relationships between tables. The behavior of Upserter
 // depends on three struct tags.
 //
-// """
 //  * db: As with sqlx, this tag is the database column name for the field.
 //     If db is not defined, the default is the lowercase value of the field
 //     name.
@@ -39,7 +38,6 @@ var (
 //     you wouldn't want to store them in the db. Instead you'd want a
 //     "location" column tagged with `upsert_value:"ll_to_earth(:lat, :lon)`
 //
-// """
 type Upserter interface {
 	// Table returns table name we should save to
 	Table() string
