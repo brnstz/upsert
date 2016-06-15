@@ -7,12 +7,16 @@ import (
 	"log"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
 
 var (
 	ErrNoIDReturned = errors.New("no id returned")
+
+	// LongQuery will log long queries if set to a non-zero time
+	LongQuery time.Duration
 )
 
 // Upserter is an interface specific to sqlx and PostgreSQL that can save a
@@ -220,12 +224,25 @@ func updateSQL(u Upserter) string {
 // insertSQL returns a full SQL command to insert this Upserter u
 func insertSQL(u Upserter) string {
 	q := fmt.Sprintf(`INSERT INTO "%s" %s RETURNING *`, u.Table(), values(u))
+
 	return q
 }
 
 func Update(ext sqlx.Ext, u Upserter) (err error) {
+	q := updateSQL(u)
+
+	if LongQuery > time.Duration(0) {
+		t1 := time.Now()
+		defer func() {
+			t2 := time.Now()
+			if t2.Sub(t1) > LongQuery {
+				log.Println(t2.Sub(t1), q, u)
+			}
+		}()
+	}
+
 	// Try to update an existing row
-	rows, err := sqlx.NamedQuery(ext, updateSQL(u), u)
+	rows, err := sqlx.NamedQuery(ext, q, u)
 	if err != nil {
 		log.Println(updateSQL(u), err)
 		return
@@ -250,8 +267,20 @@ func Update(ext sqlx.Ext, u Upserter) (err error) {
 // that implements the Upserter() interface. We attempt to insert it
 // and set its primary key id value.
 func Insert(ext sqlx.Ext, u Upserter) (err error) {
+	q := insertSQL(u)
+
+	if LongQuery > time.Duration(0) {
+		t1 := time.Now()
+		defer func() {
+			t2 := time.Now()
+			if t2.Sub(t1) > LongQuery {
+				log.Println(t2.Sub(t1), q, u)
+			}
+		}()
+	}
+
 	// Try to insert a row
-	rows, err := sqlx.NamedQuery(ext, insertSQL(u), u)
+	rows, err := sqlx.NamedQuery(ext, q, u)
 	if err != nil {
 		log.Println(err)
 		return
