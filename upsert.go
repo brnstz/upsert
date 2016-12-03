@@ -228,6 +228,13 @@ func insertSQL(u Upserter) string {
 	return q
 }
 
+// getSQL returns a full SQL command to retrieve this Upserter u
+func getSQL(u Upserter) string {
+	q := fmt.Sprintf(`SELECT * FROM %s %s`, u.Table(), where(u))
+
+	return q
+}
+
 func Update(ext sqlx.Ext, u Upserter) (err error) {
 	q := updateSQL(u)
 
@@ -240,6 +247,10 @@ func Update(ext sqlx.Ext, u Upserter) (err error) {
 			}
 		}()
 	}
+
+	// Try to get an existing row and check if all values are the
+	// same
+	// FIXME
 
 	// Try to update an existing row
 	rows, err := sqlx.NamedQuery(ext, q, u)
