@@ -274,6 +274,8 @@ func Update(ext sqlx.Ext, u Upserter) (status int, err error) {
 			log.Println("no change, ignoring update")
 			status = NoChange
 			return
+		} else {
+			log.Println("yes there is a change")
 		}
 	}
 
