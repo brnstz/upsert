@@ -248,12 +248,59 @@ func Update(ext sqlx.Ext, u Upserter) (err error) {
 		}()
 	}
 
+	other := reflect.ValueOf(u)
+	log.Println("what is other?", other)
+
 	// Try to get an existing row and check if all values are the
 	// same
-	// FIXME
+	/*
+		rtype := reflect.TypeOf(u).Elem()
+		other := reflect.Indirect(reflect.New(rtype))
+
+		rows, err := sqlx.NamedQuery(ext, getSQL(u), u)
+		if err != nil && err != sql.ErrNoRows {
+			log.Println("error getting", err, getSQL(u))
+			return
+		}
+
+		rows.Next()
+		err = rows.StructScan(&other)
+		log.Println("what is other?", &other)
+		if err != nil && err != sql.ErrNoRows {
+			log.Println("error getting", err, getSQL(u))
+			return
+		}
+
+		if reflect.DeepEqual(u, other) {
+			log.Println(u, other, "are deep equal")
+			return
+		} else {
+			log.Println(u, other, "are not deep equal")
+		}
+	*/
+
+	rows, err := sqlx.NamedQuery(ext, getSQL(u), u)
+	if err != nil {
+		log.Println("error getting", err, getSQL(u))
+		return
+	}
+
+	if rows.Next() {
+		err = rows.StructScan(&other)
+		if err != nil {
+			log.Println("error scanning", err, getSQL(u))
+			return
+		}
+
+		if reflect.DeepEqual(&other, u) {
+			log.Println("they are equal")
+		} else {
+			log.Println("they are not equal")
+		}
+	}
 
 	// Try to update an existing row
-	rows, err := sqlx.NamedQuery(ext, q, u)
+	rows, err = sqlx.NamedQuery(ext, q, u)
 	if err != nil {
 		log.Println(updateSQL(u), err)
 		return

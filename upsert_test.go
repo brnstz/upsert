@@ -60,12 +60,24 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+
+	_, err = db.Exec(`
+		CREATE TABLE person (
+			id BIGSERIAL PRIMARY KEY,
+			name TEXT,
+			age INT
+		)
+	`)
+
+	if err != nil {
+		panic(err)
+	}
 }
 
 type Person struct {
 	Name string
 	Age  int
-	Id   int `upsert:"key,omit"`
+	Id   int `upsert:"key"`
 }
 
 func (p *Person) Table() string {
@@ -91,14 +103,6 @@ func GetPersonById(db sqlx.Ext, id int) (p *Person, err error) {
 
 func TestUpsert(t *testing.T) {
 	var err error
-
-	_, err = db.Exec(`
-		CREATE TABLE person (
-			id BIGSERIAL PRIMARY KEY,
-			name TEXT,
-			age INT
-		)
-	`)
 
 	p1, err := NewPerson("Brian Seitz", 36)
 	if err != nil {
@@ -130,4 +134,16 @@ func TestUpsert(t *testing.T) {
 		t.Fatalf("expected age 37 but got %d", p3.Age)
 	}
 
+}
+
+func TestGet(t *testing.T) {
+	p1, err := NewPerson("Steven Seagal", 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = upsert.Upsert(db, p1)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
