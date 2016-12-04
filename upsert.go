@@ -12,6 +12,12 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+const (
+	Inserted = iota
+	Updated
+	NoChange
+)
+
 var (
 	ErrNoIDReturned = errors.New("no id returned")
 
@@ -235,7 +241,7 @@ func getSQL(u Upserter) string {
 	return q
 }
 
-func Update(ext sqlx.Ext, u Upserter) (err error) {
+func Update(ext sqlx.Ext, u Upserter) (status int, err error) {
 	q := updateSQL(u)
 
 	if LongQuery > time.Duration(0) {
@@ -248,61 +254,30 @@ func Update(ext sqlx.Ext, u Upserter) (err error) {
 		}()
 	}
 
-	//other := reflect.ValueOf(u)
-	//other := reflect.New(reflect.TypeOf(u)).Elem()
 	otherPtr := reflect.New(reflect.TypeOf(u).Elem())
 	other := reflect.Indirect(otherPtr)
-	log.Println("what is other?", other)
 
-	// Try to get an existing row and check if all values are the
-	// same
-	/*
-		rtype := reflect.TypeOf(u).Elem()
-		other := reflect.Indirect(reflect.New(rtype))
-
-		rows, err := sqlx.NamedQuery(ext, getSQL(u), u)
-		if err != nil && err != sql.ErrNoRows {
-			log.Println("error getting", err, getSQL(u))
-			return
-		}
-
-		rows.Next()
-		err = rows.StructScan(&other)
-		log.Println("what is other?", &other)
-		if err != nil && err != sql.ErrNoRows {
-			log.Println("error getting", err, getSQL(u))
-			return
-		}
-
-		if reflect.DeepEqual(u, other) {
-			log.Println(u, other, "are deep equal")
-			return
-		} else {
-			log.Println(u, other, "are not deep equal")
-		}
-	*/
-
-	log.Println("hello there")
 	rows, err := sqlx.NamedQuery(ext, getSQL(u), u)
 	if err != nil {
-		log.Println("error getting", err, getSQL(u))
+		log.Println("error getting", err)
 		return
 	}
 
 	if rows.Next() {
 		err = rows.StructScan(other.Addr().Interface())
 		if err != nil {
-			log.Println("error scanning", err, getSQL(u), other, u)
+			log.Println("error scanning", err)
 			return
 		}
-		log.Println("hey now", other, u)
 
 		if reflect.DeepEqual(other.Addr().Interface(), u) {
-			log.Println("they are equal")
-		} else {
-			log.Println("they are not equal")
+			log.Println("no change, ignoring update")
+			status = NoChange
+			return
 		}
 	}
+
+	status = Updated
 
 	// Try to update an existing row
 	rows, err = sqlx.NamedQuery(ext, q, u)
@@ -371,9 +346,9 @@ func Insert(ext sqlx.Ext, u Upserter) (err error) {
 // if a new row was inserted. The client is responsible for wrapping
 // in a transaction when needed. This can be used when running a transaction
 // at a higher level (upserting multiple items).
-func Upsert(ext sqlx.Ext, u Upserter) (inserted bool, err error) {
+func Upsert(ext sqlx.Ext, u Upserter) (status int, err error) {
 	// Try to update, return immediately if succcesful
-	err = Update(ext, u)
+	status, err = Update(ext, u)
 	if err == nil {
 		return
 	}
@@ -385,14 +360,14 @@ func Upsert(ext sqlx.Ext, u Upserter) (inserted bool, err error) {
 		return
 	}
 
-	inserted = true
+	status = Inserted
 
 	return
 }
 
 // UpsertTx takes only an sqlx.DB and wraps the upsert attempt into a
 // a transaction.
-func UpsertTx(db *sqlx.DB, u Upserter) (inserted bool, err error) {
+func UpsertTx(db *sqlx.DB, u Upserter) (status int, err error) {
 	tx, err := db.Beginx()
 	if err != nil {
 		log.Println("can't start transaction", err)
@@ -407,7 +382,7 @@ func UpsertTx(db *sqlx.DB, u Upserter) (inserted bool, err error) {
 	}()
 
 	// Try to update
-	err = Update(tx, u)
+	status, err = Update(tx, u)
 
 	// If we have a nil error, we successfully updated. If we have
 	// an err other than ErrNoIDReturned, we couldn't update for an
@@ -423,7 +398,7 @@ func UpsertTx(db *sqlx.DB, u Upserter) (inserted bool, err error) {
 		return
 	}
 
-	inserted = true
+	status = Inserted
 
 	return
 }

@@ -148,14 +148,33 @@ func TestGet(t *testing.T) {
 	}
 
 	// p2 should update without any write info
-	p2, err := NewPerson("Steven Seagal", 65)
+	p2, err := NewPerson("Steven Seagal", 64)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = upsert.Upsert(db, p2)
+	status, err := upsert.Upsert(db, p2)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if status != upsert.NoChange {
+		t.Fatal("expected upsert.NoChange but got", status)
+	}
+
+	// p3 should update without any write info
+	p3, err := NewPerson("Steven Seagal", 65)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	status, err = upsert.Upsert(db, p3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if status != upsert.Updated {
+		t.Fatal("expected upsert.Updated but got", status)
 	}
 
 }
