@@ -248,7 +248,10 @@ func Update(ext sqlx.Ext, u Upserter) (err error) {
 		}()
 	}
 
-	other := reflect.ValueOf(u)
+	//other := reflect.ValueOf(u)
+	//other := reflect.New(reflect.TypeOf(u)).Elem()
+	otherPtr := reflect.New(reflect.TypeOf(u).Elem())
+	other := reflect.Indirect(otherPtr)
 	log.Println("what is other?", other)
 
 	// Try to get an existing row and check if all values are the
@@ -279,6 +282,7 @@ func Update(ext sqlx.Ext, u Upserter) (err error) {
 		}
 	*/
 
+	log.Println("hello there")
 	rows, err := sqlx.NamedQuery(ext, getSQL(u), u)
 	if err != nil {
 		log.Println("error getting", err, getSQL(u))
@@ -286,13 +290,14 @@ func Update(ext sqlx.Ext, u Upserter) (err error) {
 	}
 
 	if rows.Next() {
-		err = rows.StructScan(&other)
+		err = rows.StructScan(other.Addr().Interface())
 		if err != nil {
-			log.Println("error scanning", err, getSQL(u))
+			log.Println("error scanning", err, getSQL(u), other, u)
 			return
 		}
+		log.Println("hey now", other, u)
 
-		if reflect.DeepEqual(&other, u) {
+		if reflect.DeepEqual(other.Addr().Interface(), u) {
 			log.Println("they are equal")
 		} else {
 			log.Println("they are not equal")

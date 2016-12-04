@@ -146,4 +146,16 @@ func TestGet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// p2 should update without any write info
+	p2, err := NewPerson("Steven Seagal", 65)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = upsert.Upsert(db, p2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 }
