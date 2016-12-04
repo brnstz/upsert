@@ -18,11 +18,25 @@ const (
 	NoChange
 )
 
+func statusToText(status int) string {
+	switch status {
+	case Inserted:
+		return "inserted"
+	case Updated:
+		return "updated"
+	case NoChange:
+		return "no change"
+	}
+
+	return "invalid status"
+}
+
 var (
 	ErrNoIDReturned = errors.New("no id returned")
 
 	// LongQuery will log long queries if set to a non-zero time
 	LongQuery time.Duration
+	Debug     = false
 )
 
 // Upserter is an interface specific to sqlx and PostgreSQL that can save a
@@ -87,7 +101,7 @@ func newColumnSpec(fieldName string, tag reflect.StructTag) columnSpec {
 // key fields and any composite (array, nested struct) types or any
 // field that doesn't map directly into a db column. Tag a field with
 // `upsert:"omit"` to explicitly exclude from this list.
-func updateColumns(u Upserter) (columns []columnSpec) {
+func updateColumns(u interface{}) (columns []columnSpec) {
 	ut := reflect.TypeOf(u)
 
 	if ut.Kind() == reflect.Ptr {
@@ -116,7 +130,7 @@ func updateColumns(u Upserter) (columns []columnSpec) {
 // foreign key plus an internal value. This is used in where clause
 // when trying to find existing rows. Tag a field with `"upsert:"key"`
 // to include in the unique key.
-func uniqueKeyColumns(u Upserter) (columns []columnSpec) {
+func uniqueKeyColumns(u interface{}) (columns []columnSpec) {
 	ut := reflect.TypeOf(u)
 
 	if ut.Kind() == reflect.Ptr {
@@ -164,7 +178,7 @@ func set(u Upserter) string {
 
 // values returns a string like `("col1", "col2") VALUES(:col1, :col2)`
 // for use with sqlx.NamedExec() etc.
-func values(u Upserter) string {
+func values(u interface{}) string {
 	cols := updateColumns(u)
 	n := len(cols)
 
@@ -271,12 +285,10 @@ func Update(ext sqlx.Ext, u Upserter) (status int, err error) {
 			return
 		}
 
-		if reflect.DeepEqual(otherInterface, u) {
-			log.Println("no change, ignoring update")
+		if values(otherInterface) == values(u) {
 			status = NoChange
+			rows.Close()
 			return
-		} else {
-			log.Println("yes there is a change", otherInterface, u)
 		}
 	}
 	rows.Close()
@@ -351,6 +363,12 @@ func Insert(ext sqlx.Ext, u Upserter) (err error) {
 // in a transaction when needed. This can be used when running a transaction
 // at a higher level (upserting multiple items).
 func Upsert(ext sqlx.Ext, u Upserter) (status int, err error) {
+	defer func() {
+		if Debug {
+			log.Println(statusToText(status), u)
+		}
+	}()
+
 	// Try to update, return immediately if succcesful
 	status, err = Update(ext, u)
 	if err == nil {
@@ -372,6 +390,12 @@ func Upsert(ext sqlx.Ext, u Upserter) (status int, err error) {
 // UpsertTx takes only an sqlx.DB and wraps the upsert attempt into a
 // a transaction.
 func UpsertTx(db *sqlx.DB, u Upserter) (status int, err error) {
+	defer func() {
+		if Debug {
+			log.Println(statusToText(status), u)
+		}
+	}()
+
 	tx, err := db.Beginx()
 	if err != nil {
 		log.Println("can't start transaction", err)
@@ -403,6 +427,10 @@ func UpsertTx(db *sqlx.DB, u Upserter) (status int, err error) {
 	}
 
 	status = Inserted
+
+	if Debug {
+		log.Println(statusToText(status), u)
+	}
 
 	return
 }
