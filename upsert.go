@@ -256,6 +256,7 @@ func Update(ext sqlx.Ext, u Upserter) (status int, err error) {
 
 	otherPtr := reflect.New(reflect.TypeOf(u).Elem())
 	other := reflect.Indirect(otherPtr)
+	otherInterface := other.Addr().Interface()
 
 	rows, err := sqlx.NamedQuery(ext, getSQL(u), u)
 	if err != nil {
@@ -264,20 +265,21 @@ func Update(ext sqlx.Ext, u Upserter) (status int, err error) {
 	}
 
 	if rows.Next() {
-		err = rows.StructScan(other.Addr().Interface())
+		err = rows.StructScan(otherInterface)
 		if err != nil {
 			log.Println("error scanning", err)
 			return
 		}
 
-		if reflect.DeepEqual(other.Addr().Interface(), u) {
+		if reflect.DeepEqual(otherInterface, u) {
 			log.Println("no change, ignoring update")
 			status = NoChange
 			return
 		} else {
-			log.Println("yes there is a change")
+			log.Println("yes there is a change", otherInterface, u)
 		}
 	}
+	rows.Close()
 
 	status = Updated
 
