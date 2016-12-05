@@ -125,6 +125,34 @@ func updateColumns(u interface{}) (columns []columnSpec) {
 	return
 }
 
+func updateValueString(u interface{}) string {
+	b := bytes.NewBuffer(nil)
+
+	ut := reflect.TypeOf(u)
+
+	if ut.Kind() == reflect.Ptr {
+		ut = ut.Elem()
+	}
+
+	if ut.Kind() != reflect.Struct {
+		return ""
+	}
+
+	val := reflect.ValueOf(u).Elem()
+
+	for i := 0; i < ut.NumField(); i++ {
+		field := ut.Field(i)
+		tag := field.Tag
+
+		// Include any column that isn't tagged with upsert:omit
+		if !strings.Contains(tag.Get("upsert"), "omit") {
+			fmt.Fprintf(b, "%v ", val.Field(i))
+		}
+	}
+
+	return b.String()
+}
+
 // uniqueKeyColumns returns the fields of the struct that together are
 // naturally unique. For example, an md5 hash of the content. Or a
 // foreign key plus an internal value. This is used in where clause
@@ -285,7 +313,7 @@ func Update(ext sqlx.Ext, u Upserter) (status int, err error) {
 			return
 		}
 
-		if values(otherInterface) == values(u) {
+		if values(otherInterface) == values(u) && updateValueString(otherInterface) == updateValueString(u) {
 			status = NoChange
 			rows.Close()
 			return
