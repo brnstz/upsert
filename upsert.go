@@ -313,7 +313,20 @@ func Update(ext sqlx.Ext, u Upserter) (status int, err error) {
 			return
 		}
 
-		if values(otherInterface) == values(u) && updateValueString(otherInterface) == updateValueString(u) {
+		otherKeys := values(otherInterface)
+		uKeys := values(u)
+
+		otherValues := updateValueString(otherInterface)
+		uValues := updateValueString(u)
+
+		if Debug {
+			log.Println(otherKeys)
+			log.Println(uKeys)
+			log.Println(otherValues)
+			log.Println(uValues)
+		}
+
+		if otherKeys == uKeys && otherValues == uValues {
 			status = NoChange
 			rows.Close()
 			return
