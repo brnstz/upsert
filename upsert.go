@@ -144,9 +144,16 @@ func updateValueString(u interface{}) string {
 		field := ut.Field(i)
 		tag := field.Tag
 
-		// Include any column that isn't tagged with upsert:omit
-		if !strings.Contains(tag.Get("upsert"), "omit") {
-			fmt.Fprintf(b, "%v ", val.Field(i))
+		// Include any column that isn't tagged with upsert:omit and doesn't
+		// have an upsert_value
+		if !strings.Contains(tag.Get("upsert"), "omit") && len(tag.Get("upsert_value")) < 1 {
+			x := val.Field(i).Interface()
+			switch v := x.(type) {
+			case time.Time:
+				fmt.Fprintf(b, "%v ", v.Unix())
+			default:
+				fmt.Fprintf(b, "%v ", x)
+			}
 		}
 	}
 
